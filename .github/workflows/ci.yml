@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_VERSION: 1.65.0
+
+jobs:
+  cargo:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - command: fmt
+          args: --all -- --check
+        - command: clippy
+          args: -- -D warnings
+        - command: check
+        - command: test
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: "clippy, rustfmt"
+      - uses: Swatinem/rust-cache@v1
+      - run: cargo ${{ matrix.command }} ${{ matrix.args }}
+
+  verifications-complete:
+    needs:
+      - cargo
+    runs-on: ubuntu-latest
+    steps:
+      - run: true
+
+  cargo-publish:
+    needs: verifications-complete
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      CRATESIO_TOKEN: ${{ secrets.CRATESIO_TOKEN }}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ env.RUST_VERSION }}
+    - run: cargo publish --token ${{ secrets.CRATESIO_TOKEN }}
+      continue-on-error: true
