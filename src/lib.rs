@@ -8,6 +8,7 @@ use std::{
     sync::Arc,
 };
 
+pub mod ctrl;
 mod span;
 
 /// A composable abstraction for 1-dimensional patterns.
@@ -331,20 +332,6 @@ pub trait One {
 /// The rational value type used throughout the library to represent a point
 /// along a single dimension.
 pub type Rational = Rational64;
-
-/// A pattern value type that allows for representing a set of labelled controls.
-pub type Controls = std::collections::BTreeMap<String, Value>;
-
-const SOUND: &str = "sound";
-const NOTE: &str = "note";
-
-/// The set of possible control value types.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Value {
-    String(String),
-    F64(f64),
-    Rational(Rational),
-}
 
 /// A dynamic representation of a [`Pattern`].
 ///
@@ -833,35 +820,16 @@ where
     }
 }
 
-/// Given a pattern of sound names, produce a control pattern of `"sound"` events.
-pub fn sound<P>(pattern: P) -> impl Pattern<Value = Controls>
-where
-    P: 'static + Pattern,
-    P::Value: Clone + Into<String>,
-{
-    let f = |s: P::Value| std::iter::once((SOUND.to_string(), Value::String(s.into()))).collect();
-    pattern.app(atom(f))
-}
-
-/// Given a pattern of note values, produce a control pattern of `"note"` events.
-pub fn note<P>(pattern: P) -> impl Pattern<Value = Controls>
-where
-    P: 'static + Pattern<Value = f64>,
-{
-    let f = |n| std::iter::once((NOTE.to_string(), Value::F64(n))).collect();
-    pattern.app(atom(f))
-}
-
 // ----------------------------------------------------------------------------
 
 #[test]
 fn test_merge_extend() {
-    let p = sound(atom("hello")).merge_extend(note(atom(4.0)));
+    let p = ctrl::sound(atom("hello")).merge_extend(ctrl::note(atom(4.0)));
     dbg!(p.debug_span(span!(0 / 1, 4 / 1)));
     let mut cycle = p.query(span!(0 / 1, 1 / 1));
     let mut expected = std::collections::BTreeMap::new();
-    expected.insert(SOUND.to_string(), Value::String("hello".into()));
-    expected.insert(NOTE.to_string(), Value::F64(4.0));
+    expected.insert(ctrl::SOUND.to_string(), ctrl::Value::String("hello".into()));
+    expected.insert(ctrl::NOTE.to_string(), ctrl::Value::F64(4.0));
     assert_eq!(cycle.next().unwrap().value, expected);
     assert_eq!(cycle.next(), None);
 }
