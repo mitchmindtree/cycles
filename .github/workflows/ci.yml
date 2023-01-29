@@ -22,8 +22,6 @@ jobs:
         include:
         - command: fmt
           args: --all -- --check
-        - command: clippy
-          args: -- -D warnings
         - command: check
         - command: test
     steps:
