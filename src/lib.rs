@@ -471,30 +471,6 @@ pub struct EventsRate<I> {
     rate: Rational,
 }
 
-#[derive(Debug)]
-struct Apply<A, B> {
-    pattern: A,
-    apply: Arc<B>,
-}
-
-#[derive(Debug)]
-struct EventsApply<I, P>
-where
-    I: Iterator,
-    P: Pattern,
-{
-    span: Span,
-    current: Option<Current<I::Item, P::Events>>,
-    events: I,
-    apply: Arc<P>,
-}
-
-#[derive(Debug)]
-struct Current<Ev, Efs> {
-    ev: Ev,
-    efs: Efs,
-}
-
 // ----------------------------------------------------------------------------
 
 impl<T> Event<T> {
@@ -666,62 +642,6 @@ where
         let span = span.map(|p| p * rate);
         let events = pattern.query(span);
         EventsRate { events, rate }
-    }
-}
-
-impl<A, B, F> Pattern for Apply<A, B>
-where
-    A: Pattern,
-    B: Pattern<Value = F>,
-    A::Value: Clone,
-    F: Fn(A::Value) -> B::Value,
-{
-    type Value = B::Value;
-    type Events = EventsApply<A::Events, B>;
-    fn query(&self, span: Span) -> Self::Events {
-        let apply = self.apply.clone();
-        let events = self.pattern.query(span);
-        let current = None;
-        EventsApply {
-            span,
-            events,
-            current,
-            apply,
-        }
-    }
-}
-
-impl<I, P, F, A, B> Iterator for EventsApply<I, P>
-where
-    I: Iterator<Item = Event<A>>,
-    P: Pattern<Value = F>,
-    F: Fn(A) -> B,
-    A: Clone,
-{
-    type Item = Event<B>;
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            self.current = match self.current {
-                None => self.events.next().map(|ev| {
-                    let efs = self.apply.query(self.span);
-                    Current { ev, efs }
-                }),
-                Some(ref mut curr) => {
-                    if let Some(ef) = curr.efs.next() {
-                        if let Some(active) = curr.ev.span.active.intersect(ef.span.active) {
-                            let whole = curr
-                                .ev
-                                .span
-                                .whole
-                                .and_then(|wv| ef.span.whole.and_then(|wf| wv.intersect(wf)));
-                            let value = (ef.value)(curr.ev.value.clone());
-                            return Some(Event::new(value, active, whole));
-                        }
-                    }
-                    None
-                }
-            };
-        }
     }
 }
 

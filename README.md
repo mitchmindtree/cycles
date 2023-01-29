@@ -17,6 +17,6 @@ that can be queried with a [`Span`] to produce a sequence of [`Event`]s. All
 other items are related to constructing, applying, modifying or mapping types
 implementing `Pattern`.
 
-[crates-io]: https://crates.io/crates/tidalcycles
-[docs-rs]: https://docs.rs/tidalcycles/
+[crates-io]: https://crates.io/crates/cycles
+[docs-rs]: https://docs.rs/cycles/
 [tidalcycles]: https://tidalcycles.org/
