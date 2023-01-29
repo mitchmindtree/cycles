@@ -1,0 +1,13 @@
+[package]
+name = "cycles"
+version = "0.1.0"
+description = "A cyclic pattern abstraction, heavily inspired by TidalCycles."
+edition = "2021"
+keywords = ["pattern", "cycle", "music", "audio", "generative"]
+license-file = "LICENSE.md"
+readme = "README.md"
+repository = "https://github.com/mitchmindtree/cycles"
+rust-version = "1.65.0"
+  
+[dependencies]
+num-rational = { version = "0.4", default-features = false, features = ["std"] }
