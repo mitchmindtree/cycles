@@ -270,7 +270,7 @@ pub trait Pattern {
     }
 
     /// Assuming a pattern of values in the range 0 to 1, produces a pattern in the range -1 to 1.
-    fn to_polar(self) -> MapValues<Self, fn(Self::Value) -> Self::Value>
+    fn polar(self) -> MapValues<Self, fn(Self::Value) -> Self::Value>
     where
         Self: Sized,
         Self::Value: Polar,
@@ -780,7 +780,7 @@ pub fn saw() -> impl Pattern<Value = Rational> {
 
 /// A signal pattern that produces a saw wave in the range -1..=1.
 pub fn saw2() -> impl Pattern<Value = Rational> {
-    saw().to_polar()
+    saw().polar()
 }
 
 /// Concatenate the given sequence of patterns into a single pattern whose
