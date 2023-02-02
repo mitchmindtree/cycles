@@ -726,6 +726,15 @@ where
     }
 }
 
+impl<'p, V> fmt::Debug for DynPattern<V>
+where
+    V: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.debug().fmt(f)
+    }
+}
+
 // ----------------------------------------------------------------------------
 
 /// A pattern that, when queried, always produces a single event sampled from the given function.
