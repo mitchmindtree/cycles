@@ -9,6 +9,7 @@ use std::{
 };
 
 pub mod ctrl;
+pub mod mini;
 mod span;
 
 /// A composable abstraction for 1-dimensional patterns.
@@ -44,6 +45,11 @@ pub trait Pattern {
     /// assert_eq!(pattern.query(span!(1/2)).next().unwrap().value, Rational::new(1, 2));
     /// ```
     fn query(&self, span: Span) -> Self::Events;
+
+    /// Query the pattern for events within a single cycle, (i.e. `span!(0/1, 1/1)`).
+    fn query_cycle(&self) -> Self::Events {
+        self.query(span!(0 / 1, 1 / 1))
+    }
 
     /// Convert the pattern to a trait object behind an [`Arc`] and dynamically
     /// box queries in order to represent the pattern with a known, sized type.
