@@ -12,6 +12,14 @@ pub mod ctrl;
 pub mod mini;
 mod span;
 
+pub mod prelude {
+    pub use crate::{
+        atom,
+        ctrl::{self, note, sound, Controls},
+        fastcat, m, saw, saw2, signal, silence, slowcat, stack, steady, Pattern,
+    };
+}
+
 /// A composable abstraction for 1-dimensional patterns.
 ///
 /// A [`Pattern`] is any type that may be [queried][`Pattern::query`] with a
@@ -494,6 +502,19 @@ impl EventSpan {
     pub fn new(active: Span, whole: Option<Span>) -> Self {
         EventSpan { active, whole }
     }
+
+    pub fn intersect(self, other: Self) -> Option<Self> {
+        self.active.intersect(other.active).map(|active| {
+            let whole = self
+                .whole
+                .and_then(|sw| other.whole.and_then(|ow| sw.intersect(ow)));
+            Self { whole, active }
+        })
+    }
+
+    pub fn whole_or_active(&self) -> Span {
+        self.whole.unwrap_or(self.active)
+    }
 }
 
 impl<T> BoxEvents<T> {
@@ -832,6 +853,59 @@ where
     move |span: Span| {
         let ps = patterns.clone();
         (0..ps.len()).flat_map(move |ix| ps[ix].query(span))
+    }
+}
+
+/// Joins a pattern of patterns into a single pattern.
+///
+/// 1. When queried, get the events from the outer pattern.
+/// 2. Query the inner pattern using the active of the outer.
+/// 3. For each inner event, set the whole and active to be the intersection of
+/// the outer whole and part respectively.
+/// 4. Concatenate all the events together (discarding whole/parts that don't intersect).
+pub fn join<P: Pattern>(pp: impl Pattern<Value = P>) -> impl Pattern<Value = P::Value> {
+    move |span: Span| {
+        pp.query(span).flat_map(move |o_ev: Event<P>| {
+            o_ev.value.query(o_ev.span.active).filter_map(move |i_ev| {
+                o_ev.span.intersect(i_ev.span).map(|span| {
+                    let value = i_ev.value;
+                    Event { span, value }
+                })
+            })
+        })
+    }
+}
+
+/// Similar to `join`, but the structure only comes from the inner pattern.
+pub fn inner_join<P: Pattern>(pp: impl Pattern<Value = P>) -> impl Pattern<Value = P::Value> {
+    move |q_span: Span| {
+        pp.query(q_span).flat_map(move |o_ev: Event<P>| {
+            o_ev.value.query(o_ev.span.active).filter_map(move |i_ev| {
+                let whole = i_ev.span.whole;
+                q_span.intersect(i_ev.span.active).map(|active| {
+                    let span = EventSpan { whole, active };
+                    let value = i_ev.value;
+                    Event { span, value }
+                })
+            })
+        })
+    }
+}
+
+/// Similar to `join`, but the structure only comes from the outer pattern.
+pub fn outer_join<P: Pattern>(pp: impl Pattern<Value = P>) -> impl Pattern<Value = P::Value> {
+    move |q_span: Span| {
+        pp.query(q_span).flat_map(move |o_ev: Event<P>| {
+            let i_q_span = Span::instant(o_ev.span.whole_or_active().start);
+            o_ev.value.query(i_q_span).filter_map(move |i_ev| {
+                let whole = o_ev.span.whole;
+                q_span.intersect(o_ev.span.active).map(|active| {
+                    let span = EventSpan { whole, active };
+                    let value = i_ev.value;
+                    Event { span, value }
+                })
+            })
+        })
     }
 }
 
