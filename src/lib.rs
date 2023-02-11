@@ -16,7 +16,8 @@ pub mod prelude {
     pub use crate::{
         atom,
         ctrl::{self, note, sound, Controls},
-        fastcat, m, saw, saw2, signal, silence, slowcat, stack, steady, Pattern,
+        fastcat, inner_join, join, m, outer_join, saw, saw2, signal, silence, slowcat, stack,
+        steady, Pattern,
     };
 }
 
@@ -49,8 +50,8 @@ pub trait Pattern {
     /// assert_eq!(events.next(), None);
     ///
     /// let pattern = saw();
-    /// assert_eq!(pattern.query(span!(0/1)).next().unwrap().value, Rational::new(0, 1));
-    /// assert_eq!(pattern.query(span!(1/2)).next().unwrap().value, Rational::new(1, 2));
+    /// assert_eq!(pattern.query(span!(0/1)).next().unwrap().value, (0, 1).into());
+    /// assert_eq!(pattern.query(span!(1/2)).next().unwrap().value, (1, 2).into());
     /// ```
     fn query(&self, span: Span) -> Self::Events;
 
@@ -133,6 +134,16 @@ pub trait Pattern {
     {
         let pattern = self;
         Rate { pattern, rate }
+    }
+
+    /// Shift the pattern by the given amount.
+    fn shift(self, amount: Rational) -> DynPattern<Self::Value>
+    where
+        Self: 'static + Sized,
+    {
+        self.map_query_points(move |t| t - amount)
+            .map_event_points(move |t| t + amount)
+            .into_dyn()
     }
 
     /// Apply the given pattern of functions to `self`.
@@ -698,6 +709,9 @@ where
 {
     type Item = Event<T>;
     fn next(&mut self) -> Option<Self::Item> {
+        if self.rate == Rational::from(0) {
+            return None;
+        }
         self.events
             .next()
             .map(|ev| ev.map_points(|p| p / self.rate))
@@ -798,7 +812,7 @@ pub fn atom<T: Clone>(t: T) -> impl Pattern<Value = T> {
 
 /// A signal pattern that produces a saw wave in the range 0..=1.
 pub fn saw() -> impl Pattern<Value = Rational> {
-    signal(|r| r % 1)
+    signal(|r: Rational| r - r.floor())
 }
 
 /// A signal pattern that produces a saw wave in the range -1..=1.
@@ -818,9 +832,10 @@ where
     move |span: Span| {
         let ps = patterns.clone();
         span.cycles().flat_map(move |cycle| {
-            let sam = usize::try_from(cycle.start.floor().to_integer())
-                .expect("failed to cast span start to usize");
-            let ix = sam % ps.len();
+            let sam = cycle.start.floor();
+            let ps_len = i64::try_from(ps.len()).expect("failed to cast usize to i64");
+            let ixr = rem_euclid(sam, Rational::from(ps_len));
+            let ix = usize::try_from(ixr.to_integer()).expect("failed to cast index to usize");
             let p = &ps[ix];
             p.query(cycle)
         })
@@ -909,7 +924,83 @@ pub fn outer_join<P: Pattern>(pp: impl Pattern<Value = P>) -> impl Pattern<Value
     }
 }
 
+fn rem_euclid(r: Rational, d: Rational) -> Rational {
+    r - (d * (r / d).floor())
+}
+
 // ----------------------------------------------------------------------------
+
+#[test]
+fn test_rem_euclid() {
+    // For positive values, behaves the same as remainder.
+    let d = Rational::from(5);
+    for i in (0..10).map(Rational::from) {
+        assert_eq!(rem_euclid(i, d), i % d);
+    }
+
+    // For negative, acts in a kind of euclidean cycle.
+    let d = Rational::from(3);
+    let test = (-9..=0).rev().map(Rational::from);
+    let expected = [0, 2, 1].into_iter().cycle().map(Rational::from);
+    for (a, b) in test.zip(expected) {
+        dbg!(a, rem_euclid(a, d));
+        assert_eq!(rem_euclid(a, d), b);
+    }
+
+    // Should work for fractions.
+    let d = Rational::new(1, 2);
+    let test = (0..10).map(|i| Rational::new(i, 10));
+    let expected = (0..5).cycle().map(|i| Rational::new(i, 10));
+    for (a, b) in test.zip(expected) {
+        assert_eq!(rem_euclid(a, d), b);
+    }
+}
+
+#[test]
+fn test_shift() {
+    let a = || m![bd ~ bd ~];
+    let b = || m![~ bd ~ bd];
+    assert_eq!(
+        a().shift((1, 4).into()).query_cycle().collect::<Vec<_>>(),
+        b().query_cycle().collect::<Vec<_>>(),
+    );
+    assert_eq!(
+        a().shift((5, 4).into()).query_cycle().collect::<Vec<_>>(),
+        b().query_cycle().collect::<Vec<_>>(),
+    );
+    assert_eq!(
+        a().query_cycle().collect::<Vec<_>>(),
+        b().shift((-1, 4).into()).query_cycle().collect::<Vec<_>>(),
+    );
+    assert_eq!(
+        a().query_cycle().collect::<Vec<_>>(),
+        b().shift((-3, 4).into()).query_cycle().collect::<Vec<_>>(),
+    );
+    assert_eq!(
+        a().shift((1, 8).into()).query_cycle().collect::<Vec<_>>(),
+        b().shift((-1, 8).into()).query_cycle().collect::<Vec<_>>(),
+    );
+    assert!(
+        a().shift((1, 8).into()).query_cycle().collect::<Vec<_>>()
+            != b().query_cycle().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_join() {
+    let pp = |active @ whole| std::iter::once(Event::new(m![1.0 1.0], active, Some(whole)));
+    let p = join(pp);
+    let mut q = p.query(span!(0 / 1, 2 / 1));
+    let q0 = span!(0 / 1, 1 / 2);
+    let q1 = span!(1 / 2, 1 / 1);
+    let q2 = span!(1 / 1, 3 / 2);
+    let q3 = span!(3 / 2, 2 / 1);
+    assert_eq!(q.next(), Some(Event::new(1.0, q0, Some(q0))));
+    assert_eq!(q.next(), Some(Event::new(1.0, q1, Some(q1))));
+    assert_eq!(q.next(), Some(Event::new(1.0, q2, Some(q2))));
+    assert_eq!(q.next(), Some(Event::new(1.0, q3, Some(q3))));
+    assert_eq!(q.next(), None);
+}
 
 #[test]
 fn test_merge_extend() {
@@ -1030,6 +1121,21 @@ fn test_saw() {
         let v2 = saw2().query(i).map(|ev| ev.value).next().unwrap();
         println!("{}: v1={}, v2={}", r, v1, v2);
     }
+
+    let p = saw();
+    let a = span!(1 / 2);
+    let b = span!(-1 / 2);
+    assert_eq!(
+        p.query(a).next().unwrap().value,
+        p.query(b).next().unwrap().value
+    );
+
+    let a = span!(1 / 4);
+    let b = span!(-3 / 4);
+    assert_eq!(
+        p.query(a).next().unwrap().value,
+        p.query(b).next().unwrap().value
+    );
 }
 
 #[test]
