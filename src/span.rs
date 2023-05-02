@@ -42,6 +42,10 @@ impl Span {
         Span { start, end }
     }
 
+    pub fn len(&self) -> Rational {
+        self.end - self.start
+    }
+
     pub fn cycles(self) -> impl Iterator<Item = Self> {
         let Span { mut start, end } = self;
         std::iter::from_fn(move || {

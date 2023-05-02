@@ -16,8 +16,8 @@ pub mod prelude {
     pub use crate::{
         atom,
         ctrl::{self, note, sound, Controls},
-        fastcat, inner_join, join, m, outer_join, saw, saw2, signal, silence, slowcat, stack,
-        steady, Pattern,
+        fastcat, inner_join, join, m, outer_join, saw, saw2, signal, silence, slowcat, span, stack,
+        steady, Pattern, Span,
     };
 }
 
@@ -486,25 +486,25 @@ pub struct EventsRate<I> {
 // ----------------------------------------------------------------------------
 
 impl<T> Event<T> {
-    fn new(value: T, active: Span, whole: Option<Span>) -> Self {
+    pub fn new(value: T, active: Span, whole: Option<Span>) -> Self {
         let span = EventSpan::new(active, whole);
         Self { span, value }
     }
 
-    fn map<U>(self, map: impl FnOnce(T) -> U) -> Event<U> {
+    pub fn map<U>(self, map: impl FnOnce(T) -> U) -> Event<U> {
         let Event { span, value } = self;
         let value = map(value);
         Event::new(value, span.active, span.whole)
     }
 
-    fn map_spans(self, map: impl Fn(Span) -> Span) -> Self {
+    pub fn map_spans(self, map: impl Fn(Span) -> Span) -> Self {
         let active = map(self.span.active);
         let whole = self.span.whole.map(&map);
         let value = self.value;
         Self::new(value, active, whole)
     }
 
-    fn map_points(self, map: impl Fn(Rational) -> Rational) -> Self {
+    pub fn map_points(self, map: impl Fn(Rational) -> Rational) -> Self {
         self.map_spans(|span| span.map(&map))
     }
 }
@@ -819,6 +819,16 @@ pub fn saw() -> impl Pattern<Value = Rational> {
 pub fn saw2() -> impl Pattern<Value = Rational> {
     saw().polar()
 }
+
+// WIP
+// pub fn focus_span<P: Pattern>(pattern: P, span: Span) -> impl Pattern<Value = P::Value> {
+//     unimplemented!();
+//     silence()
+//     //pattern.rate(1 / (span.end - span.start))
+
+//     // focusArc :: Arc -> Pattern a -> Pattern a
+//     // focusArc (Arc s e) p = (cyclePos s) `rotR` (_fast (1/(e-s)) p)
+// }
 
 /// Concatenate the given sequence of patterns into a single pattern whose
 /// total unique span covers a number of cycles equal to the number of patterns
