@@ -16,8 +16,8 @@ pub mod prelude {
     pub use crate::{
         atom,
         ctrl::{self, note, sound, Controls},
-        fastcat, inner_join, join, m, outer_join, saw, saw2, signal, silence, slowcat, span, stack,
-        steady, Pattern, Span,
+        fastcat, fit_cycle, fit_span, inner_join, join, m, outer_join, saw, saw2, signal, silence,
+        slowcat, span, stack, steady, timecat, Pattern, Span,
     };
 }
 
@@ -866,6 +866,49 @@ where
     slowcat(patterns).rate(rate)
 }
 
+/// Like [fastcat] but allows the user to provide proportionate sizes for each pattern.
+// TODO: Can we not implement this in terms of `rate` and `slowcat`/`fastcat`?
+pub fn timecat<I, P>(patterns: I) -> impl Pattern<Value = P::Value>
+where
+    I: IntoIterator<Item = (Rational, P)>,
+    I::IntoIter: ExactSizeIterator,
+    P: Pattern,
+{
+    // Collect the patterns while summing the ratio.
+    let mut total_ratio = Rational::default();
+    let patterns: Vec<(Rational, P)> = patterns
+        .into_iter()
+        .inspect(|(r, _)| total_ratio += r)
+        .collect();
+    // Map the ratios into spans within a single cycle.
+    let mut start = Rational::default();
+    let patterns: Arc<[(Span, P)]> = patterns
+        .into_iter()
+        .map(|(r, p)| {
+            let len = r / total_ratio;
+            let end = start + len;
+            let span = Span::new(start, end);
+            start = end;
+            (span, p)
+        })
+        .collect();
+    // Create a pattern, checking for intersections between query span cycles and pattern spans.
+    move |span: Span| {
+        let ps = patterns.clone();
+        span.cycles().flat_map(move |cycle| {
+            let sam = cycle.start.floor();
+            let ps = ps.clone();
+            (0..ps.len())
+                .filter_map(move |i| {
+                    let (p_span, pattern) = &ps[i];
+                    let p_span = p_span.map(|r| r + sam);
+                    cycle.intersect(p_span).map(|sect| pattern.query(sect))
+                })
+                .flatten()
+        })
+    }
+}
+
 /// Combine the patterns into a single "stacked" pattern, where each query
 /// is equivalent to querying each of the inner patterns and concatenating their
 /// produced events.
@@ -932,6 +975,29 @@ pub fn outer_join<P: Pattern>(pp: impl Pattern<Value = P>) -> impl Pattern<Value
             })
         })
     }
+}
+
+/// Fit the `src` span of the given pattern to the `dst` span by first
+/// adjusting the rate and then shifting the pattern.
+pub fn fit_span<T>(
+    src: Span,
+    dst: Span,
+    p: impl 'static + Pattern<Value = T>,
+) -> impl Pattern<Value = T> {
+    // Adjust the rate of pattern so that src len matches dst.
+    let rate = src.len() / dst.len();
+    let rate_adjusted = p.rate(rate);
+    // Determine the new src span after rate adjustment.
+    let new_src = src.map(|r| r * rate);
+    // Shift the pattern so that it starts at the `dst` span.
+    let amount = dst.start - new_src.start;
+    let shifted = rate_adjusted.shift(amount);
+    shifted
+}
+
+/// The same as [fit_span_to], but assumes the `src` span is a single cycle.
+pub fn fit_cycle<T>(dst: Span, p: impl 'static + Pattern<Value = T>) -> impl Pattern<Value = T> {
+    fit_span(span!(0 / 1, 1 / 1), dst, p)
 }
 
 fn rem_euclid(r: Rational, d: Rational) -> Rational {
@@ -1116,6 +1182,35 @@ fn test_fastcat() {
 }
 
 #[test]
+fn test_timecat() {
+    let a = atom("a");
+    let b = atom("b");
+    let cat = timecat([(Rational::from(1), a), (Rational::from(2), b)]);
+    let span = span!(1 / 4, 3 / 2);
+    dbg!(cat.debug_span(span));
+    let mut es = cat
+        .query(span)
+        .map(|ev| (ev.value, ev.span.active, ev.span.whole));
+    assert_eq!(
+        es.next(),
+        Some(("a", span!(1 / 4, 1 / 3), Some(span!(0 / 1, 1 / 1)))),
+    );
+    assert_eq!(
+        es.next(),
+        Some(("b", span!(1 / 3, 1 / 1), Some(span!(0 / 1, 1 / 1)))),
+    );
+    assert_eq!(
+        es.next(),
+        Some(("a", span!(1 / 1, 4 / 3), Some(span!(1 / 1, 2 / 1)))),
+    );
+    assert_eq!(
+        es.next(),
+        Some(("b", span!(4 / 3, 3 / 2), Some(span!(1 / 1, 2 / 1)))),
+    );
+    assert_eq!(es.next(), None);
+}
+
+#[test]
 fn test_span_cycles() {
     let span = span!(0 / 1, 3 / 1);
     assert_eq!(span.cycles().count(), 3);
@@ -1225,4 +1320,24 @@ fn test_debug() {
     let p = atom("hello");
     println!("{:?}", p.debug());
     println!("{:?}", p.debug_span(span!(2 / 1, 7 / 2)));
+}
+
+#[test]
+fn test_fit_span() {
+    let p = || atom("a");
+    let src = span!(0 / 1, 1 / 1);
+    let dst = span!(1 / 2, 3 / 4);
+    let pfs = fit_span(src, dst, p());
+    let mut es = pfs
+        .query(dst)
+        .map(|ev| (ev.value, ev.span.active, ev.span.whole));
+    assert_eq!(
+        es.next(),
+        Some(("a", span!(1 / 2, 3 / 4), Some(span!(1 / 2, 3 / 4)))),
+    );
+    assert!(es.next().is_none());
+    let pfc = fit_cycle(dst, p());
+    let pfs_es = pfs.query(span!(0 / 1, 4 / 1));
+    let pfc_es = pfc.query(span!(0 / 1, 4 / 1));
+    assert_eq!(pfs_es.collect::<Vec<_>>(), pfc_es.collect::<Vec<_>>());
 }
