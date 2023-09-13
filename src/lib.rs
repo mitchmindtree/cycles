@@ -304,6 +304,36 @@ pub trait Pattern {
         self.map(Polar::polar)
     }
 
+    /// Map a pattern's active spans to start and end phases through their
+    /// corresponding `whole` events.
+    // TODO: Change this return type to `impl Pattern<Value =
+    // [Rational; 2]>` when we can have impl trait return types in
+    // traits.
+    fn phase(
+        self,
+    ) -> MapEventsIter<
+        Self,
+        fn(
+            Self::Events,
+        ) -> std::iter::FilterMap<
+            Self::Events,
+            fn(Event<Self::Value>) -> Option<Event<[Rational; 2]>>,
+        >,
+    >
+    where
+        Self: Sized,
+    {
+        fn filter_map<T>(ev: Event<T>) -> Option<Event<[Rational; 2]>> {
+            let whole = ev.span.whole?;
+            let active = ev.span.active;
+            let lerp_whole = |r: Rational| (r - whole.start) / whole.len();
+            let start = lerp_whole(active.start);
+            let end = lerp_whole(active.end);
+            Some(ev.map(|_| [start, end]))
+        }
+        self.map_events_iter(|evs| evs.filter_map(filter_map))
+    }
+
     /// Return a wrapper providing a `fmt::Debug` implementation for the pattern.
     ///
     /// Formats events resulting from a query to the given span.
@@ -820,16 +850,6 @@ pub fn saw2() -> impl Pattern<Value = Rational> {
     saw().polar()
 }
 
-// WIP
-// pub fn focus_span<P: Pattern>(pattern: P, span: Span) -> impl Pattern<Value = P::Value> {
-//     unimplemented!();
-//     silence()
-//     //pattern.rate(1 / (span.end - span.start))
-
-//     // focusArc :: Arc -> Pattern a -> Pattern a
-//     // focusArc (Arc s e) p = (cyclePos s) `rotR` (_fast (1/(e-s)) p)
-// }
-
 /// Concatenate the given sequence of patterns into a single pattern whose
 /// total unique span covers a number of cycles equal to the number of patterns
 /// in the sequence.
@@ -1345,4 +1365,18 @@ fn test_fit_span() {
     let pfs_es = pfs.query(span!(0 / 1, 4 / 1));
     let pfc_es = pfc.query(span!(0 / 1, 4 / 1));
     assert_eq!(pfs_es.collect::<Vec<_>>(), pfc_es.collect::<Vec<_>>());
+}
+
+#[test]
+fn test_phase() {
+    let p = atom(()).phase();
+    let span = span!(1 / 4, 3 / 4);
+    let mut es = p.query(span).map(|ev| ev.value);
+    assert_eq!(es.next(), Some([Rational::new(1, 4), Rational::new(3, 4)]));
+    assert!(es.next().is_none());
+    let span = span!(1 / 8, 3 / 2);
+    let mut es = p.query(span).map(|ev| ev.value);
+    assert_eq!(es.next(), Some([Rational::new(1, 8), Rational::new(1, 1)]));
+    assert_eq!(es.next(), Some([Rational::new(0, 1), Rational::new(1, 2)]));
+    assert!(es.next().is_none());
 }
