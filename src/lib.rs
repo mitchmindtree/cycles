@@ -324,12 +324,7 @@ pub trait Pattern {
         Self: Sized,
     {
         fn filter_map<T>(ev: Event<T>) -> Option<Event<[Rational; 2]>> {
-            let whole = ev.span.whole?;
-            let active = ev.span.active;
-            let lerp_whole = |r: Rational| (r - whole.start) / whole.len();
-            let start = lerp_whole(active.start);
-            let end = lerp_whole(active.end);
-            Some(ev.map(|_| [start, end]))
+            ev.span.active_phase().map(|phase| ev.map(|_| phase))
         }
         self.map_events_iter(|evs| evs.filter_map(filter_map))
     }
@@ -555,6 +550,16 @@ impl EventSpan {
 
     pub fn whole_or_active(&self) -> Span {
         self.whole.unwrap_or(self.active)
+    }
+
+    /// The phase of the active within the whole.
+    pub fn active_phase(&self) -> Option<[Rational; 2]> {
+        let whole = self.whole?;
+        let active = self.active;
+        let lerp_whole = |r: Rational| (r - whole.start) / whole.len();
+        let start = lerp_whole(active.start);
+        let end = lerp_whole(active.end);
+        Some([start, end])
     }
 }
 
