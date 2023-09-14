@@ -377,6 +377,12 @@ pub trait One {
     const ONE: Self;
 }
 
+/// Types convertible to a lossy representation of the same value.
+pub trait ToF64Lossy {
+    /// Convert to a lossy representation of the same value.
+    fn to_f64_lossy(self) -> f64;
+}
+
 // ----------------------------------------------------------------------------
 
 /// The rational value type used throughout the library to represent a point
@@ -774,6 +780,12 @@ impl<T> Polar for T where T: One + Add<Output = Self> + Mul<Output = Self> + Sub
 
 impl One for Rational {
     const ONE: Self = Rational::new_raw(1, 1);
+}
+
+impl ToF64Lossy for Rational {
+    fn to_f64_lossy(self) -> f64 {
+        *self.numer() as f64 / *self.denom() as f64
+    }
 }
 
 impl<T> fmt::Debug for Event<T>

@@ -16,6 +16,34 @@ pub enum Value {
     Rational(Rational),
 }
 
+impl From<Rational> for Value {
+    fn from(r: Rational) -> Self {
+        Self::Rational(r)
+    }
+}
+
+impl From<f64> for Value {
+    fn from(f: f64) -> Self {
+        Self::F64(f)
+    }
+}
+
+impl From<String> for Value {
+    fn from(s: String) -> Self {
+        Self::String(s)
+    }
+}
+
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Value::String(val) => val.fmt(f),
+            Value::Rational(val) => val.fmt(f),
+            Value::F64(val) => val.fmt(f),
+        }
+    }
+}
+
 /// Given a pattern of sound names, produce a control pattern of `"sound"` events.
 pub fn sound<P>(pattern: P) -> impl Pattern<Value = Controls>
 where
