@@ -393,7 +393,6 @@ pub type Rational = Rational64;
 ///
 /// Useful for storing or sending patterns, at the cost of boxing queried
 /// events and allocating the inner [`Pattern`] behind an ARC.
-#[derive(Clone)]
 pub struct DynPattern<T>(Arc<dyn Pattern<Value = T, Events = BoxEvents<T>>>);
 
 /// A dynamic representation of a pattern's associated events iterator.
@@ -582,7 +581,6 @@ impl<T> DynPattern<T> {
     fn new<P>(pattern: P) -> Self
     where
         P: 'static + Pattern<Value = T>,
-        P::Events: 'static,
         T: 'static,
     {
         let arc = Arc::new(pattern.map_events_iter(BoxEvents::new))
@@ -780,6 +778,12 @@ impl<T> Polar for T where T: One + Add<Output = Self> + Mul<Output = Self> + Sub
 
 impl One for Rational {
     const ONE: Self = Rational::new_raw(1, 1);
+}
+
+impl<T> Clone for DynPattern<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
 }
 
 impl ToF64Lossy for Rational {
