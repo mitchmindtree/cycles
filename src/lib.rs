@@ -398,6 +398,13 @@ pub struct DynPattern<T>(Arc<dyn Pattern<Value = T, Events = BoxEvents<T>>>);
 /// A dynamic representation of a pattern's associated events iterator.
 pub struct BoxEvents<T>(Box<dyn Iterator<Item = Event<T>>>);
 
+/// An iterator produced by a query to a rendered slice of events.
+pub struct SliceEvents<'a, T> {
+    ix: usize,
+    span: Span,
+    events: &'a [Event<T>],
+}
+
 /// A type providing a [`std::fmt::Debug`] implementation for types implementing [`Pattern`].
 pub struct PatternDebug<'p, V, E> {
     pattern: &'p dyn Pattern<Value = V, Events = E>,
@@ -611,6 +618,18 @@ impl<T> Pattern for DynPattern<T> {
     }
 }
 
+impl<'a, T> Pattern for &'a [Event<T>] {
+    type Value = &'a T;
+    type Events = SliceEvents<'a, T>;
+    fn query(&self, span: Span) -> Self::Events {
+        SliceEvents {
+            ix: 0,
+            span,
+            events: self,
+        }
+    }
+}
+
 impl<S: Sample> Pattern for Signal<S> {
     type Value = S::Value;
     type Events = std::iter::Once<Event<Self::Value>>;
@@ -761,6 +780,21 @@ impl<T> Iterator for BoxEvents<T> {
     type Item = Event<T>;
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next()
+    }
+}
+
+impl<'a, T> Iterator for SliceEvents<'a, T> {
+    type Item = Event<&'a T>;
+    fn next(&mut self) -> Option<Self::Item> {
+        let evs = &self.events[..];
+        while let Some(ev) = evs.get(self.ix) {
+            self.ix += 1;
+            if ev.span.active.intersect(self.span).is_some() {
+                let ev = Event::new(&ev.value, ev.span.active, ev.span.whole);
+                return Some(ev);
+            }
+        }
+        None
     }
 }
 
