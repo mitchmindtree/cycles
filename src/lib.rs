@@ -622,10 +622,21 @@ impl<'a, T> Pattern for &'a [Event<T>] {
     type Value = &'a T;
     type Events = SliceEvents<'a, T>;
     fn query(&self, span: Span) -> Self::Events {
+        // Improve worst-case performance by finding the start and end first.
+        let events = self;
+        let start = events
+            .binary_search_by_key(&span.start, |ev| ev.span.active.start)
+            .unwrap_or_else(|ix| ix);
+        let events = &events[start..];
+        let end = events
+            .binary_search_by_key(&span.end, |ev| ev.span.active.end)
+            .map(|ix| ix + 1)
+            .unwrap_or_else(|ix| ix);
+        let events = &events[..end];
         SliceEvents {
             ix: 0,
             span,
-            events: self,
+            events,
         }
     }
 }
