@@ -399,11 +399,11 @@ pub struct DynPattern<T>(Arc<dyn Pattern<Value = T, Events = BoxEvents<T>>>);
 pub struct BoxEvents<T>(Box<dyn Iterator<Item = Event<T>>>);
 
 /// An iterator produced by a query to a rendered slice of events.
-pub struct SliceEvents<'a, T> {
-    ix: usize,
-    span: Span,
-    events: &'a [Event<T>],
-}
+///
+/// Assumes the events within the slice are ordered (at least by
+/// active span). This assumption allows to use a binary search to
+/// find the beginning and end of the slice during a query.
+pub struct SliceEvents<'a, T>(std::slice::Iter<'a, Event<T>>);
 
 /// A type providing a [`std::fmt::Debug`] implementation for types implementing [`Pattern`].
 pub struct PatternDebug<'p, V, E> {
@@ -621,6 +621,9 @@ impl<T> Pattern for DynPattern<T> {
 impl<'a, T> Pattern for &'a [Event<T>] {
     type Value = &'a T;
     type Events = SliceEvents<'a, T>;
+    /// Assumes the events within the slice are ordered (at least by
+    /// active span). This assumption allows to use a binary search to
+    /// find the beginning and end of the slice during a query.
     fn query(&self, span: Span) -> Self::Events {
         // Improve worst-case performance by finding the start and end first.
         let events = self;
@@ -632,12 +635,7 @@ impl<'a, T> Pattern for &'a [Event<T>] {
             .binary_search_by_key(&span.end, |ev| ev.span.active.start)
             .map(|ix| ix + 1)
             .unwrap_or_else(|ix| ix);
-        let events = &events[..end];
-        SliceEvents {
-            ix: 0,
-            span,
-            events,
-        }
+        SliceEvents(events[..end].iter())
     }
 }
 
@@ -797,15 +795,9 @@ impl<T> Iterator for BoxEvents<T> {
 impl<'a, T> Iterator for SliceEvents<'a, T> {
     type Item = Event<&'a T>;
     fn next(&mut self) -> Option<Self::Item> {
-        let evs = &self.events[..];
-        while let Some(ev) = evs.get(self.ix) {
-            self.ix += 1;
-            if ev.span.active.intersect(self.span).is_some() {
-                let ev = Event::new(&ev.value, ev.span.active, ev.span.whole);
-                return Some(ev);
-            }
-        }
-        None
+        self.0
+            .next()
+            .map(|ev| Event::new(&ev.value, ev.span.active, ev.span.whole))
     }
 }
 
