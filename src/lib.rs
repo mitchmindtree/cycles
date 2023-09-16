@@ -625,11 +625,11 @@ impl<'a, T> Pattern for &'a [Event<T>] {
         // Improve worst-case performance by finding the start and end first.
         let events = self;
         let start = events
-            .binary_search_by_key(&span.start, |ev| ev.span.active.start)
+            .binary_search_by_key(&span.start, |ev| ev.span.active.end)
             .unwrap_or_else(|ix| ix);
         let events = &events[start..];
         let end = events
-            .binary_search_by_key(&span.end, |ev| ev.span.active.end)
+            .binary_search_by_key(&span.end, |ev| ev.span.active.start)
             .map(|ix| ix + 1)
             .unwrap_or_else(|ix| ix);
         let events = &events[..end];
