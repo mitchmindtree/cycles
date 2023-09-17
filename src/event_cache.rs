@@ -33,19 +33,11 @@ impl<T: std::fmt::Debug> EventCache<T> {
     ///
     /// Returns whether or not the cache was mutated in some way.
     pub fn update(&mut self, new_span: Span, pattern: impl Pattern<Value = T>) {
-        let old_span = self.span;
-
         // Clear all events not intersecting the new span.
-        if old_span.intersect(new_span).is_none() {
-            self.events.clear();
-        } else {
-            let range = crate::slice::range_intersect(&self.events, new_span);
-            self.events.drain(range.end..);
-            self.events.drain(..range.start);
-        }
-
+        self.events
+            .retain(|ev| new_span.intersect(ev.span.whole_or_active()).is_some());
         // Find the new spans and query events for them.
-        let (pre, post) = old_span.difference(new_span);
+        let (pre, post) = self.span.difference(new_span);
         let old_evs = std::mem::replace(&mut self.events, vec![]);
         let pre_evs = pre.into_iter().flat_map(|pre| {
             pattern.query(pre).filter(move |ev| {

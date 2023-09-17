@@ -432,7 +432,7 @@ pub struct ApplyEvent<T> {
 }
 
 /// The span associated with a single event.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct EventSpan {
     /// The span within which the active part is relevant.
     /// Also referred to as the event "structure".
@@ -792,6 +792,18 @@ impl<T> Polar for T where T: One + Add<Output = Self> + Mul<Output = Self> + Sub
 
 impl One for Rational {
     const ONE: Self = Rational::new_raw(1, 1);
+}
+
+impl Ord for EventSpan {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.whole_or_active().cmp(&other.whole_or_active())
+    }
+}
+
+impl PartialOrd for EventSpan {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl<T> Clone for DynPattern<T> {
