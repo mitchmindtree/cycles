@@ -73,7 +73,7 @@ impl Span {
 
     /// Checks if point lies within the span exclusively.
     pub fn contains(&self, point: Rational) -> bool {
-	self.start <= point && point < self.end
+        self.start <= point && point < self.end
     }
 
     /// The intersecting span between `self` and `other`.

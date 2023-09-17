@@ -1,6 +1,8 @@
 #![doc = include_str!("../README.md")]
 
+pub use event_cache::EventCache;
 use num_rational::Rational64;
+pub use slice::SliceEvents;
 pub use span::Span;
 use std::{
     fmt,
@@ -9,7 +11,9 @@ use std::{
 };
 
 pub mod ctrl;
+mod event_cache;
 pub mod mini;
+pub mod slice;
 mod span;
 
 pub mod prelude {
@@ -398,13 +402,6 @@ pub struct DynPattern<T>(Arc<dyn Pattern<Value = T, Events = BoxEvents<T>>>);
 /// A dynamic representation of a pattern's associated events iterator.
 pub struct BoxEvents<T>(Box<dyn Iterator<Item = Event<T>>>);
 
-/// An iterator produced by a query to a rendered slice of events.
-///
-/// Assumes the events within the slice are ordered (at least by
-/// active span). This assumption allows to use a binary search to
-/// find the beginning and end of the slice during a query.
-pub struct SliceEvents<'a, T>(std::slice::Iter<'a, Event<T>>);
-
 /// A type providing a [`std::fmt::Debug`] implementation for types implementing [`Pattern`].
 pub struct PatternDebug<'p, V, E> {
     pattern: &'p dyn Pattern<Value = V, Events = E>,
@@ -544,6 +541,16 @@ impl<T> Event<T> {
     pub fn map_points(self, map: impl Fn(Rational) -> Rational) -> Self {
         self.map_spans(|span| span.map(&map))
     }
+
+    pub fn by_ref(&self) -> Event<&T> {
+        Event::new(&self.value, self.span.active, self.span.whole)
+    }
+}
+
+impl<'a, T: Clone> Event<&'a T> {
+    pub fn cloned(self) -> Event<T> {
+        Event::new(self.value.clone(), self.span.active, self.span.whole)
+    }
 }
 
 impl EventSpan {
@@ -615,27 +622,6 @@ impl<T> Pattern for DynPattern<T> {
     type Events = BoxEvents<T>;
     fn query(&self, span: Span) -> Self::Events {
         self.0.query(span)
-    }
-}
-
-impl<'a, T> Pattern for &'a [Event<T>] {
-    type Value = &'a T;
-    type Events = SliceEvents<'a, T>;
-    /// Assumes the events within the slice are ordered (at least by
-    /// active span). This assumption allows to use a binary search to
-    /// find the beginning and end of the slice during a query.
-    fn query(&self, span: Span) -> Self::Events {
-        // Improve worst-case performance by finding the start and end first.
-        let events = self;
-        let start = events
-            .binary_search_by_key(&span.start, |ev| ev.span.active.end)
-            .unwrap_or_else(|ix| ix);
-        let events = &events[start..];
-        let end = events
-            .binary_search_by_key(&span.end, |ev| ev.span.active.start)
-            .map(|ix| ix + 1)
-            .unwrap_or_else(|ix| ix);
-        SliceEvents(events[..end].iter())
     }
 }
 
@@ -789,15 +775,6 @@ impl<T> Iterator for BoxEvents<T> {
     type Item = Event<T>;
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next()
-    }
-}
-
-impl<'a, T> Iterator for SliceEvents<'a, T> {
-    type Item = Event<&'a T>;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0
-            .next()
-            .map(|ev| Event::new(&ev.value, ev.span.active, ev.span.whole))
     }
 }
 
