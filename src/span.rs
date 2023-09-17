@@ -71,14 +71,41 @@ impl Span {
         span!(f(self.start), f(self.end))
     }
 
+    /// Checks if point lies within the span exclusively.
+    pub fn contains(&self, point: Rational) -> bool {
+	self.start <= point && point < self.end
+    }
+
+    /// The intersecting span between `self` and `other`.
+    ///
+    /// NOTE: If either span's `start` is equal to its `end`, `None` is returned.
     pub fn intersect(self, other: Self) -> Option<Self> {
         let start = std::cmp::max(self.start, other.start);
         let end = std::cmp::min(self.end, other.end);
         if end <= start {
             None
         } else {
-            Some(span!(start, end))
+            Some(Span { start, end })
         }
+    }
+
+    /// The portions of `other` that do *not* intersect `self`.
+    ///
+    /// Returns preceding and succeeding diffs respectively.
+    ///
+    /// Returns `(None, None)` in the case that `other` is a subsection of `self`.
+    pub fn difference(self, other: Self) -> (Option<Self>, Option<Self>) {
+        let pre = if self.start <= other.start {
+            None
+        } else {
+            Some(Span::new(other.start, std::cmp::min(self.start, other.end)))
+        };
+        let post = if other.end <= self.end {
+            None
+        } else {
+            Some(Span::new(std::cmp::max(self.end, other.start), other.end))
+        };
+        (pre, post)
     }
 }
 
@@ -123,4 +150,51 @@ fn test_span_intersect() {
         Some(span!(1 / 4, 3 / 4))
     );
     assert_eq!(span!(0 / 1, 1 / 4).intersect(span!(3 / 4, 1 / 1)), None);
+}
+
+#[test]
+fn test_span_difference() {
+    let s1 = Span::new(Rational::new(2, 1), Rational::new(5, 1));
+
+    // Case 1: other is entirely before self
+    let other = Span::new(Rational::new(0, 1), Rational::new(1, 1));
+    assert_eq!(s1.difference(other), (Some(other), None));
+
+    // Case 2: other is entirely after self
+    let other = Span::new(Rational::new(6, 1), Rational::new(8, 1));
+    assert_eq!(s1.difference(other), (None, Some(other)));
+
+    // Case 3: other intersects self at the start
+    let other = Span::new(Rational::new(1, 1), Rational::new(3, 1));
+    assert_eq!(
+        s1.difference(other),
+        (
+            Some(Span::new(Rational::new(1, 1), Rational::new(2, 1))),
+            None
+        )
+    );
+
+    // Case 4: other intersects self at the end
+    let other = Span::new(Rational::new(4, 1), Rational::new(6, 1));
+    assert_eq!(
+        s1.difference(other),
+        (
+            None,
+            Some(Span::new(Rational::new(5, 1), Rational::new(6, 1)))
+        )
+    );
+
+    // Case 5: other is entirely within self
+    let other = Span::new(Rational::new(3, 1), Rational::new(4, 1));
+    assert_eq!(s1.difference(other), (None, None));
+
+    // Case 6: self is entirely within other
+    let other = Span::new(Rational::new(1, 1), Rational::new(6, 1));
+    assert_eq!(
+        s1.difference(other),
+        (
+            Some(Span::new(Rational::new(1, 1), Rational::new(2, 1))),
+            Some(Span::new(Rational::new(5, 1), Rational::new(6, 1)))
+        )
+    );
 }
