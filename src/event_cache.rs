@@ -33,24 +33,31 @@ impl<T: std::fmt::Debug> EventCache<T> {
     ///
     /// Returns whether or not the cache was mutated in some way.
     pub fn update(&mut self, new_span: Span, pattern: impl Pattern<Value = T>) {
-        // Clear all events not intersecting the new span.
-        self.events
-            .retain(|ev| new_span.intersect(ev.span.whole_or_active()).is_some());
+        // First, remove events that no longer intersect the new span.
+        crate::slice::retain_intersecting(&mut self.events, new_span);
         // Find the new spans and query events for them.
         let (pre, post) = self.span.difference(new_span);
         let old_evs = std::mem::replace(&mut self.events, vec![]);
-        let pre_evs = pre.into_iter().flat_map(|pre| {
-            pattern.query(pre).filter(move |ev| {
-                let ev_span = ev.span.whole_or_active();
-                pre.contains(ev_span.end)
+        let mut pre_evs: Vec<_> = pre
+            .into_iter()
+            .flat_map(|pre| {
+                pattern.query(pre).filter(move |ev| {
+                    let ev_span = ev.span.whole_or_active();
+                    pre.contains(ev_span.end)
+                })
             })
-        });
-        let post_evs = post.into_iter().flat_map(|post| {
-            pattern.query(post).filter(move |ev| {
-                let ev_span = ev.span.whole_or_active();
-                post.contains(ev_span.start)
+            .collect();
+        let mut post_evs: Vec<_> = post
+            .into_iter()
+            .flat_map(|post| {
+                pattern.query(post).filter(move |ev| {
+                    let ev_span = ev.span.whole_or_active();
+                    post.contains(ev_span.start)
+                })
             })
-        });
+            .collect();
+        pre_evs.sort_by_key(|ev| ev.span);
+        post_evs.sort_by_key(|ev| ev.span);
         self.events.extend(pre_evs);
         self.events.extend(old_evs);
         self.events.extend(post_evs);
