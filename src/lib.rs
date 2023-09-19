@@ -20,8 +20,8 @@ pub mod prelude {
     pub use crate::{
         atom,
         ctrl::{self, note, sound, Controls},
-        fastcat, fit_cycle, fit_span, inner_join, join, m, outer_join, saw, saw2, signal, silence,
-        slowcat, span, stack, steady, timecat, Pattern, Span,
+        fastcat, fit_cycle, fit_span, indices, inner_join, join, m, outer_join, saw, saw2, signal,
+        silence, slowcat, span, stack, steady, timecat, Pattern, Rational, Scalar, Span,
     };
 }
 
@@ -392,6 +392,8 @@ pub trait ToF64Lossy {
 /// The rational value type used throughout the library to represent a point
 /// along a single dimension.
 pub type Rational = Rational64;
+/// The scalar type associated with [`Rational`].
+pub type Scalar = i64;
 
 /// A dynamic representation of a [`Pattern`].
 ///
@@ -897,6 +899,11 @@ pub fn saw2() -> impl Pattern<Value = Rational> {
     saw().polar()
 }
 
+/// A pattern producing an index per cycle.
+pub fn indices() -> impl Pattern<Value = Scalar> {
+    atom(()).map_events(|ev| ev.map(|_| ev.span.active.start.to_integer()))
+}
+
 /// Concatenate the given sequence of patterns into a single pattern whose
 /// total unique span covers a number of cycles equal to the number of patterns
 /// in the sequence.
@@ -910,7 +917,7 @@ where
         let ps = patterns.clone();
         span.cycles().flat_map(move |cycle| {
             let sam = cycle.start.floor();
-            let ps_len = i64::try_from(ps.len()).expect("failed to cast usize to i64");
+            let ps_len = Scalar::try_from(ps.len()).expect("failed to cast usize to Scalar");
             let ixr = rem_euclid(sam, Rational::from(ps_len));
             let ix = usize::try_from(ixr.to_integer()).expect("failed to cast index to usize");
             let p = &ps[ix];
@@ -928,7 +935,7 @@ where
     I::IntoIter: ExactSizeIterator,
 {
     let patterns = patterns.into_iter();
-    let n = i64::try_from(patterns.len()).expect("pattern count out of range");
+    let n = Scalar::try_from(patterns.len()).expect("pattern count out of range");
     let rate = Rational::from_integer(n);
     slowcat(patterns).rate(rate)
 }
