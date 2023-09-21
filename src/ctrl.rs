@@ -5,8 +5,9 @@ use crate::{atom, Pattern, Rational};
 /// A pattern value type that allows for representing a set of labelled controls.
 pub type Controls = std::collections::BTreeMap<String, Value>;
 
-pub const SOUND: &str = "sound";
-pub const NOTE: &str = "note";
+// These map directly to the OSC strings expected by superdirt.
+pub const SOUND: &str = "s";
+pub const NOTE: &str = "n";
 
 /// The set of possible control value types.
 #[derive(Clone, Debug, PartialEq)]
