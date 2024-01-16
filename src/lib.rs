@@ -29,12 +29,6 @@ pub mod prelude {
 ///
 /// A [`Pattern`] is any type that may be [queried][`Pattern::query`] with a
 /// [`Span`] to produce a sequence of [`Event<Self::Value>`]s.
-//
-// TODO: When returning `impl Trait` in trait methods is supported (see
-// https://github.com/rust-lang/rust/issues/91611), review the following
-// methods and return `impl Pattern<Value = Self::Value>` where suitable.
-// Particularly, methods returning `DynPattern` (besides `into_dyn`) should
-// be replaced.
 pub trait Pattern {
     /// The type of the values emitted in the pattern's events.
     type Value;
@@ -141,13 +135,12 @@ pub trait Pattern {
     }
 
     /// Shift the pattern by the given amount.
-    fn shift(self, amount: Rational) -> DynPattern<Self::Value>
+    fn shift(self, amount: Rational) -> impl Pattern<Value = Self::Value>
     where
         Self: 'static + Sized,
     {
         self.map_query_points(move |t| t - amount)
             .map_event_points(move |t| t + amount)
-            .into_dyn()
     }
 
     /// Apply the given pattern of functions to `self`.
@@ -156,7 +149,7 @@ pub trait Pattern {
     /// of the active spans. The function must return the value along with the
     /// `whole` span, which should either come from one of the intersecting
     /// events, or the intersection of the two.
-    fn apply_with<P, F, B>(self, apply: P) -> DynPattern<B>
+    fn apply_with<P, F, B>(self, apply: P) -> impl Pattern<Value = B>
     where
         Self: 'static + Sized,
         Self::Value: Clone,
@@ -164,7 +157,7 @@ pub trait Pattern {
         F: Fn(ApplyEvent<Self::Value>) -> (B, Option<Span>),
     {
         let apply = Arc::new(apply);
-        let applied = move |span: Span| {
+        move |span: Span| {
             let apply = apply.clone();
             self.query(span).flat_map(move |ev| {
                 apply.query(span).flat_map(move |ef| {
@@ -181,8 +174,7 @@ pub trait Pattern {
                     })
                 })
             })
-        };
-        applied.into_dyn()
+        }
     }
 
     /// Apply the given pattern of functions to `self`.
@@ -192,7 +184,7 @@ pub trait Pattern {
     /// The resulting structure is determined by the given function `structure`
     /// which provides the `whole` spans of the intersecting events produced by
     /// `self` and `apply` respectively.
-    fn apply<P, F, G, B>(self, apply: P, structure: G) -> DynPattern<B>
+    fn apply<P, F, G, B>(self, apply: P, structure: G) -> impl Pattern<Value = B>
     where
         Self: 'static + Sized,
         Self::Value: Clone,
@@ -220,7 +212,7 @@ pub trait Pattern {
     /// Yields an event at each intersection between the active spans of `self` and `apply`.
     ///
     /// The resulting structure is the intersection of `self` and `apply`.
-    fn app<P, F, B>(self, apply: P) -> DynPattern<B>
+    fn app<P, F, B>(self, apply: P) -> impl Pattern<Value = B>
     where
         Self: 'static + Sized,
         Self::Value: Clone,
@@ -238,7 +230,7 @@ pub trait Pattern {
     /// Yields an event at each intersection between the active spans of `self` and `apply`.
     ///
     /// The resulting structure is carried from the left (i.e. `self`).
-    fn appl<P, F, B>(self, apply: P) -> DynPattern<B>
+    fn appl<P, F, B>(self, apply: P) -> impl Pattern<Value = B>
     where
         Self: 'static + Sized,
         Self::Value: Clone,
@@ -253,7 +245,7 @@ pub trait Pattern {
     /// Yields an event at each intersection between the active spans of `self` and `apply`.
     ///
     /// The resulting structure is carried from the right (i.e. the `apply` pattern).
-    fn appr<P, F, B>(self, apply: P) -> DynPattern<B>
+    fn appr<P, F, B>(self, apply: P) -> impl Pattern<Value = B>
     where
         Self: 'static + Sized,
         Self::Value: Clone,
@@ -265,7 +257,7 @@ pub trait Pattern {
 
     /// Merge the given pattern by calling the given function for each value at
     /// each active span intersection.
-    fn merge_with<P, F, T>(self, other: P, merge: F) -> DynPattern<T>
+    fn merge_with<P, F, T>(self, other: P, merge: F) -> impl Pattern<Value = T>
     where
         Self: 'static + Sized,
         Self::Value: Clone,
@@ -286,7 +278,7 @@ pub trait Pattern {
     ///
     /// Useful for applying one control pattern to another and producing the
     /// union between values.
-    fn merge_extend<P>(self, other: P) -> DynPattern<Self::Value>
+    fn merge_extend<P>(self, other: P) -> impl Pattern<Value = Self::Value>
     where
         Self: 'static + Sized,
         Self::Value: Clone + Extend<<P::Value as IntoIterator>::Item>,
@@ -300,7 +292,7 @@ pub trait Pattern {
     }
 
     /// Assuming a pattern of values in the range 0 to 1, produces a pattern in the range -1 to 1.
-    fn polar(self) -> MapValues<Self, fn(Self::Value) -> Self::Value>
+    fn polar(self) -> impl Pattern<Value = Self::Value>
     where
         Self: Sized,
         Self::Value: Polar,
@@ -313,24 +305,13 @@ pub trait Pattern {
     // TODO: Change this return type to `impl Pattern<Value =
     // [Rational; 2]>` when we can have impl trait return types in
     // traits.
-    fn phase(
-        self,
-    ) -> MapEventsIter<
-        Self,
-        fn(
-            Self::Events,
-        ) -> std::iter::FilterMap<
-            Self::Events,
-            fn(Event<Self::Value>) -> Option<Event<[Rational; 2]>>,
-        >,
-    >
+    fn phase(self) -> impl Pattern<Value = [Rational; 2]>
     where
         Self: Sized,
     {
-        fn filter_map<T>(ev: Event<T>) -> Option<Event<[Rational; 2]>> {
-            ev.span.active_phase().map(|phase| ev.map(|_| phase))
-        }
-        self.map_events_iter(|evs| evs.filter_map(filter_map))
+        self.map_events_iter(|evs| {
+            evs.filter_map(|ev| ev.span.active_phase().map(|phase| ev.map(|_| phase)))
+        })
     }
 
     /// Return a wrapper providing a `fmt::Debug` implementation for the pattern.
