@@ -71,6 +71,12 @@ impl Span {
         span!(f(self.start), f(self.end))
     }
 
+    pub fn map_len(self, f: impl Fn(Rational) -> Rational) -> Self {
+        let new_len = f(self.len());
+        let new_end = self.start + new_len;
+        span!(self.start, new_end)
+    }
+
     /// Checks if point lies within the span exclusively.
     pub fn contains(&self, point: Rational) -> bool {
         self.start <= point && point < self.end

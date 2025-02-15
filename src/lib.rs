@@ -103,6 +103,18 @@ pub trait Pattern {
         MapEventPoints { pattern, map }
     }
 
+    /// Map the length of the `active` and `whole` spans of all events produced by `self`.
+    ///
+    /// The `end` of the resulting `whole` span is adjusted to achieve the returned `len`.
+    fn map_event_lens<F>(self, map: F) -> impl Pattern<Value = Self::Value>
+    where
+        Self: 'static + Sized,
+        Self::Value: Clone,
+        F: Fn(Rational) -> Rational,
+    {
+        self.map_events(move |ev| ev.map_len(&map))
+    }
+
     /// Map the events produced by pattern queries with the given function.
     fn map_events<F, T>(self, map: F) -> MapEvents<Self, F>
     where
@@ -302,9 +314,6 @@ pub trait Pattern {
 
     /// Map a pattern's active spans to start and end phases through their
     /// corresponding `whole` events.
-    // TODO: Change this return type to `impl Pattern<Value =
-    // [Rational; 2]>` when we can have impl trait return types in
-    // traits.
     fn phase(self) -> impl Pattern<Value = [Rational; 2]>
     where
         Self: Sized,
@@ -523,6 +532,10 @@ impl<T> Event<T> {
 
     pub fn map_points(self, map: impl Fn(Rational) -> Rational) -> Self {
         self.map_spans(|span| span.map(&map))
+    }
+
+    pub fn map_len(self, map: impl Fn(Rational) -> Rational) -> Self {
+        self.map_spans(|s| s.map_len(&map))
     }
 
     pub fn by_ref(&self) -> Event<&T> {
