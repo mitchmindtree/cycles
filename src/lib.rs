@@ -108,8 +108,7 @@ pub trait Pattern {
     /// The `end` of the resulting `whole` span is adjusted to achieve the returned `len`.
     fn map_event_lens<F>(self, map: F) -> impl Pattern<Value = Self::Value>
     where
-        Self: 'static + Sized,
-        Self::Value: Clone,
+        Self: Sized,
         F: Fn(Rational) -> Rational,
     {
         self.map_events(move |ev| ev.map_len(&map))
