@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 
+pub use bjorklund::bjorklund;
 pub use event_cache::EventCache;
 use num_rational::Rational64;
 pub use slice::SliceEvents;
@@ -10,6 +11,7 @@ use std::{
     sync::Arc,
 };
 
+mod bjorklund;
 pub mod ctrl;
 mod event_cache;
 pub mod mini;
