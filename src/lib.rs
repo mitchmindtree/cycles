@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 
-pub use bjorklund::bjorklund;
+pub use bjorklund::{bjorklund, Bjorklund};
 pub use event_cache::EventCache;
 use num_rational::Rational64;
 pub use slice::SliceEvents;
@@ -70,6 +70,32 @@ pub trait Pattern {
         Self: 'static + Sized,
     {
         DynPattern::new(self)
+    }
+
+    /// Filter the pattern's events by applying the predicate to their values.
+    fn filter<F>(self, predicate: F) -> impl Pattern<Value = Self::Value>
+    where
+        Self: Sized,
+        F: Fn(&Self::Value) -> bool,
+    {
+        let predicate = Arc::new(predicate);
+        move |span| {
+            let predicate = predicate.clone();
+            self.query(span).filter(move |ev| predicate(&ev.value))
+        }
+    }
+
+    /// Filter the pattern's events by the given function.
+    fn filter_events<F>(self, predicate: F) -> impl Pattern<Value = Self::Value>
+    where
+        Self: Sized,
+        F: Fn(&Event<Self::Value>) -> bool,
+    {
+        let predicate = Arc::new(predicate);
+        move |span| {
+            let predicate = predicate.clone();
+            self.query(span).filter(move |ev| predicate(ev))
+        }
     }
 
     /// Map the values produced by pattern queries with the given function.
@@ -1076,6 +1102,42 @@ pub fn fit_cycle<T>(dst: Span, p: impl 'static + Pattern<Value = T>) -> impl Pat
 
 fn rem_euclid(r: Rational, d: Rational) -> Rational {
     r - (d * (r / d).floor())
+}
+
+/// The same as [`euclid_bool`], but with [`filter`] applied.
+pub fn euclid(k: usize, n: usize) -> impl Pattern {
+    filter(euclid_bool(k, n))
+}
+
+/// The same as [`euclid_off_bool`], but with [`filter`] applied.
+pub fn euclid_off(k: usize, n: usize, off: isize) -> impl Pattern {
+    filter(euclid_off_bool(k, n, off))
+}
+
+/// Divides up the cycle into `n` equal events, evenly distributing `k`
+/// number of `true` values between them using `bjorklund`'s algorithm.
+pub fn euclid_bool(k: usize, n: usize) -> impl Pattern<Value = bool> {
+    fastcat(bjorklund(k, n).map(atom))
+}
+
+/// The same as [`euclid_bool`], but allows providing an offset (or "rotation")
+/// for the euclidean rhythm.
+pub fn euclid_off_bool(k: usize, n: usize, off: isize) -> impl Pattern<Value = bool> {
+    let ni = isize::try_from(n).unwrap();
+    let off: usize = off.rem_euclid(ni).try_into().unwrap();
+    let bs: Vec<_> = bjorklund(k, n)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .cycle()
+        .skip(off)
+        .take(n)
+        .collect();
+    fastcat(bs.into_iter().map(atom))
+}
+
+/// Given a pattern of `bool`s, silences all `false` events, leaving only `true` events.
+pub fn filter(p: impl Pattern<Value = bool>) -> impl Pattern {
+    move |span| p.query(span).filter(|ev| ev.value)
 }
 
 // ----------------------------------------------------------------------------

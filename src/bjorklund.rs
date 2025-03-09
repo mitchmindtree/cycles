@@ -1,5 +1,39 @@
-/// When i > j, we split xs at position j,
-/// then merge each of the first j items of xs with the entire ys,
+use std::{
+    iter::{Chain, Flatten},
+    vec::IntoIter,
+};
+
+/// The iterator type returned by [`bjorklund`].
+///
+/// Wraps the flattened iterator in order to provide `ExactSizeIterator`.
+#[derive(Clone, Debug)]
+pub struct Bjorklund {
+    iter: Flatten<Chain<IntoIter<Vec<bool>>, IntoIter<Vec<bool>>>>,
+    remaining: usize,
+}
+
+impl Iterator for Bjorklund {
+    type Item = bool;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|b| {
+            self.remaining -= 1;
+            b
+        })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+impl ExactSizeIterator for Bjorklund {
+    fn len(&self) -> usize {
+        self.remaining
+    }
+}
+
+/// When len(xs) > len(ys), we split xs at position len(ys),
+/// then merge each of the first len(ys) items of xs with the entire ys,
 /// and whatever is left of xs remains as the new ys.
 fn left(xs: &mut Vec<Vec<bool>>, ys: &mut Vec<Vec<bool>>) {
     let xs_p = xs.split_off(ys.len());
@@ -7,19 +41,18 @@ fn left(xs: &mut Vec<Vec<bool>>, ys: &mut Vec<Vec<bool>>) {
     *ys = xs_p;
 }
 
-/// When j > i, we split ys at position i,
-/// then merge each of the first i items of ys with the entire xs,
+/// When len(ys) > len(xs), we split ys at position len(xs),
+/// then merge each of the first len(xs) items of ys with the entire xs,
 /// and whatever is left of ys remains as the new ys.
 fn right(xs: &mut Vec<Vec<bool>>, ys: &mut Vec<Vec<bool>>) {
-    let ys_p = ys.split_off(xs.len());
-    xs.iter_mut().zip(&mut *ys).for_each(|(a, b)| a.append(b));
-    *ys = ys_p;
+    let i = xs.len();
+    let ys_i = ys.drain(..i);
+    xs.iter_mut().zip(ys_i).for_each(|(a, b)| a.extend(b));
 }
 
 fn bjorklund_iter(xs: &mut Vec<Vec<bool>>, ys: &mut Vec<Vec<bool>>) {
-    // Repeatedly apply left or right until one of i or j is <= 1.
+    // Repeatedly apply left or right until one of len(xs) or len(ys) is <= 1.
     loop {
-        println!("{:?}", (&xs, &ys));
         if xs.len().min(ys.len()) <= 1 {
             break;
         }
@@ -31,14 +64,14 @@ fn bjorklund_iter(xs: &mut Vec<Vec<bool>>, ys: &mut Vec<Vec<bool>>) {
     }
 }
 
-/// This is the main bjorklund function that returns a Vec<bool>
-/// of length total = k + (n - k).
-pub fn bjorklund(k: usize, n: usize) -> Vec<bool> {
+/// The bjorklund pattern for euclidean rhythms, with `true`s as onsets.
+pub fn bjorklund(k: usize, remaining @ n: usize) -> Bjorklund {
     let mut xs = vec![vec![true]; k];
-    let mut ys = vec![vec![false]; n - k];
+    let mut ys = vec![vec![false]; n.saturating_sub(k)];
     bjorklund_iter(&mut xs, &mut ys);
     // Concatenate (flatten) all sublists in the resulting xs ++ ys
-    xs.into_iter().chain(ys).flatten().collect()
+    let iter = xs.into_iter().chain(ys).flatten();
+    Bjorklund { iter, remaining }
 }
 
 #[cfg(test)]
@@ -48,49 +81,49 @@ mod tests {
     #[test]
     fn test_bjorklund_2_3() {
         let expected = vec![true, true, false];
-        let actual = bjorklund(2, 3);
+        let actual: Vec<_> = bjorklund(2, 3).collect();
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_bjorklund_2_5() {
         let expected = vec![true, false, true, false, false];
-        let actual = bjorklund(2, 5);
+        let actual: Vec<_> = bjorklund(2, 5).collect();
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_bjorklund_3_4() {
         let expected = vec![true, true, true, false];
-        let actual = bjorklund(3, 4);
+        let actual: Vec<_> = bjorklund(3, 4).collect();
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_bjorklund_3_5() {
         let expected = vec![true, false, true, false, true];
-        let actual = bjorklund(3, 5);
+        let actual: Vec<_> = bjorklund(3, 5).collect();
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_bjorklund_3_8() {
         let expected = vec![true, false, false, true, false, false, true, false];
-        let actual = bjorklund(3, 8);
+        let actual: Vec<_> = bjorklund(3, 8).collect();
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_bjorklund_4_7() {
         let expected = vec![true, false, true, false, true, false, true];
-        let actual = bjorklund(4, 7);
+        let actual: Vec<_> = bjorklund(4, 7).collect();
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_bjorklund_4_9() {
         let expected = vec![true, false, true, false, true, false, true, false, false];
-        let actual = bjorklund(4, 9);
+        let actual: Vec<_> = bjorklund(4, 9).collect();
         assert_eq!(actual, expected);
     }
 
@@ -99,7 +132,7 @@ mod tests {
         let expected = vec![
             true, false, false, true, false, false, true, false, false, true, false, false,
         ];
-        let actual = bjorklund(4, 12);
+        let actual: Vec<_> = bjorklund(4, 12).collect();
         assert_eq!(actual, expected);
     }
 
@@ -109,35 +142,35 @@ mod tests {
             true, false, false, false, true, false, false, false, true, false, false, false, true,
             false, false,
         ];
-        let actual = bjorklund(4, 15);
+        let actual: Vec<_> = bjorklund(4, 15).collect();
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_bjorklund_5_6() {
         let expected = vec![true, true, true, true, true, false];
-        let actual = bjorklund(5, 6);
+        let actual: Vec<_> = bjorklund(5, 6).collect();
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_bjorklund_5_7() {
         let expected = vec![true, false, true, true, false, true, true];
-        let actual = bjorklund(5, 7);
+        let actual: Vec<_> = bjorklund(5, 7).collect();
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_bjorklund_5_8() {
         let expected = vec![true, false, true, true, false, true, true, false];
-        let actual = bjorklund(5, 8);
+        let actual: Vec<_> = bjorklund(5, 8).collect();
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_bjorklund_5_9() {
         let expected = vec![true, false, true, false, true, false, true, false, true];
-        let actual = bjorklund(5, 9);
+        let actual: Vec<_> = bjorklund(5, 9).collect();
         assert_eq!(actual, expected);
     }
 
@@ -146,7 +179,7 @@ mod tests {
         let expected = vec![
             true, false, true, false, true, false, true, false, true, false, false,
         ];
-        let actual = bjorklund(5, 11);
+        let actual: Vec<_> = bjorklund(5, 11).collect();
         assert_eq!(actual, expected);
     }
 
@@ -155,7 +188,7 @@ mod tests {
         let expected = vec![
             true, false, false, true, false, true, false, false, true, false, true, false,
         ];
-        let actual = bjorklund(5, 12);
+        let actual: Vec<_> = bjorklund(5, 12).collect();
         assert_eq!(actual, expected);
     }
 
@@ -164,7 +197,7 @@ mod tests {
         let expected = vec![
             true, false, false, true, false, true, false, false, true, false, true, false, false,
         ];
-        let actual = bjorklund(5, 13);
+        let actual: Vec<_> = bjorklund(5, 13).collect();
         assert_eq!(actual, expected);
     }
 
@@ -174,14 +207,14 @@ mod tests {
             true, false, false, true, false, false, true, false, false, true, false, false, true,
             false, false, false,
         ];
-        let actual = bjorklund(5, 16);
+        let actual: Vec<_> = bjorklund(5, 16).collect();
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_bjorklund_6_7() {
         let expected = vec![true, true, true, true, true, true, false];
-        let actual = bjorklund(6, 7);
+        let actual: Vec<_> = bjorklund(6, 7).collect();
         assert_eq!(actual, expected);
     }
 
@@ -190,21 +223,21 @@ mod tests {
         let expected = vec![
             true, false, true, false, true, false, true, false, true, false, true, false, false,
         ];
-        let actual = bjorklund(6, 13);
+        let actual: Vec<_> = bjorklund(6, 13).collect();
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_bjorklund_7_8() {
         let expected = vec![true, true, true, true, true, true, true, false];
-        let actual = bjorklund(7, 8);
+        let actual: Vec<_> = bjorklund(7, 8).collect();
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_bjorklund_7_9() {
         let expected = vec![true, false, true, true, true, false, true, true, true];
-        let actual = bjorklund(7, 9);
+        let actual: Vec<_> = bjorklund(7, 9).collect();
         assert_eq!(actual, expected);
     }
 
@@ -213,7 +246,7 @@ mod tests {
         let expected = vec![
             true, false, true, true, false, true, true, false, true, true,
         ];
-        let actual = bjorklund(7, 10);
+        let actual: Vec<_> = bjorklund(7, 10).collect();
         assert_eq!(actual, expected);
     }
 
@@ -222,7 +255,7 @@ mod tests {
         let expected = vec![
             true, false, true, true, false, true, false, true, true, false, true, false,
         ];
-        let actual = bjorklund(7, 12);
+        let actual: Vec<_> = bjorklund(7, 12).collect();
         assert_eq!(actual, expected);
     }
 
@@ -232,7 +265,7 @@ mod tests {
             true, false, true, false, true, false, true, false, true, false, true, false, true,
             false, false,
         ];
-        let actual = bjorklund(7, 15);
+        let actual: Vec<_> = bjorklund(7, 15).collect();
         assert_eq!(actual, expected);
     }
 
@@ -242,7 +275,7 @@ mod tests {
             true, false, false, true, false, true, false, true, false, false, true, false, true,
             false, true, false,
         ];
-        let actual = bjorklund(7, 16);
+        let actual: Vec<_> = bjorklund(7, 16).collect();
         assert_eq!(actual, expected);
     }
 
@@ -252,7 +285,7 @@ mod tests {
             true, false, false, true, false, true, false, false, true, false, true, false, false,
             true, false, true, false,
         ];
-        let actual = bjorklund(7, 17);
+        let actual: Vec<_> = bjorklund(7, 17).collect();
         assert_eq!(actual, expected);
     }
 
@@ -262,7 +295,7 @@ mod tests {
             true, false, false, true, false, true, false, false, true, false, true, false, false,
             true, false, true, false, false,
         ];
-        let actual = bjorklund(7, 18);
+        let actual: Vec<_> = bjorklund(7, 18).collect();
         assert_eq!(actual, expected);
     }
 
@@ -272,7 +305,7 @@ mod tests {
             true, false, true, false, true, false, true, false, true, false, true, false, true,
             false, true, false, false,
         ];
-        let actual = bjorklund(8, 17);
+        let actual: Vec<_> = bjorklund(8, 17).collect();
         assert_eq!(actual, expected);
     }
 
@@ -282,7 +315,7 @@ mod tests {
             true, false, false, true, false, true, false, true, false, false, true, false, true,
             false, true, false, false, true, false,
         ];
-        let actual = bjorklund(8, 19);
+        let actual: Vec<_> = bjorklund(8, 19).collect();
         assert_eq!(actual, expected);
     }
 
@@ -291,7 +324,7 @@ mod tests {
         let expected = vec![
             true, false, true, true, false, true, true, false, true, true, false, true, true, false,
         ];
-        let actual = bjorklund(9, 14);
+        let actual: Vec<_> = bjorklund(9, 14).collect();
         assert_eq!(actual, expected);
     }
 
@@ -301,7 +334,7 @@ mod tests {
             true, false, true, true, false, true, false, true, false, true, true, false, true,
             false, true, false,
         ];
-        let actual = bjorklund(9, 16);
+        let actual: Vec<_> = bjorklund(9, 16).collect();
         assert_eq!(actual, expected);
     }
 
@@ -311,7 +344,7 @@ mod tests {
             true, false, false, true, false, true, false, false, true, false, true, false, false,
             true, false, true, false, false, true, false, true, false,
         ];
-        let actual = bjorklund(9, 22);
+        let actual: Vec<_> = bjorklund(9, 22).collect();
         assert_eq!(actual, expected);
     }
 
@@ -321,7 +354,7 @@ mod tests {
             true, false, false, true, false, true, false, false, true, false, true, false, false,
             true, false, true, false, false, true, false, true, false, false,
         ];
-        let actual = bjorklund(9, 23);
+        let actual: Vec<_> = bjorklund(9, 23).collect();
         assert_eq!(actual, expected);
     }
 
@@ -330,7 +363,7 @@ mod tests {
         let expected = vec![
             true, true, true, true, true, true, true, true, true, true, true, false,
         ];
-        let actual = bjorklund(11, 12);
+        let actual: Vec<_> = bjorklund(11, 12).collect();
         assert_eq!(actual, expected);
     }
 
@@ -340,7 +373,7 @@ mod tests {
             true, false, false, true, false, true, false, true, false, true, false, true, false,
             false, true, false, true, false, true, false, true, false, true, false,
         ];
-        let actual = bjorklund(11, 24);
+        let actual: Vec<_> = bjorklund(11, 24).collect();
         assert_eq!(actual, expected);
     }
 
@@ -350,7 +383,7 @@ mod tests {
             true, false, true, true, false, true, false, true, false, true, false, true, false,
             true, true, false, true, false, true, false, true, false, true, false,
         ];
-        let actual = bjorklund(13, 24);
+        let actual: Vec<_> = bjorklund(13, 24).collect();
         assert_eq!(actual, expected);
     }
 
@@ -361,7 +394,7 @@ mod tests {
             false, true, false, true, false, true, false, false, true, false, true, false, true,
             false, true, false, false, true, false, true, false,
         ];
-        let actual = bjorklund(15, 34);
+        let actual: Vec<_> = bjorklund(15, 34).collect();
         assert_eq!(actual, expected);
     }
 }
