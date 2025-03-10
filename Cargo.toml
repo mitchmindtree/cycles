@@ -1,6 +1,6 @@
 [package]
 name = "cycles"
-version = "0.2.3"
+version = "0.2.4"
 description = "A cyclic pattern abstraction, heavily inspired by TidalCycles."
 edition = "2021"
 keywords = ["pattern", "cycle", "music", "audio", "generative"]
