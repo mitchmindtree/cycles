@@ -12,6 +12,23 @@ pub struct Bjorklund {
     remaining: usize,
 }
 
+/// The iterator type returned by [`distances`] and [`Bjorklund::distances`].
+///
+/// Yields the distance until the next onset inclusive of the current event.
+///
+/// If there are no onsets, immediately returns `None`.
+#[derive(Clone, Debug)]
+pub struct BjorklundDistances {
+    ix: usize,
+    pattern: Vec<bool>,
+}
+
+impl Bjorklund {
+    pub fn distances(self) -> BjorklundDistances {
+        distances(self.collect())
+    }
+}
+
 impl Iterator for Bjorklund {
     type Item = bool;
     fn next(&mut self) -> Option<Self::Item> {
@@ -20,9 +37,22 @@ impl Iterator for Bjorklund {
             b
         })
     }
-
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.remaining, Some(self.remaining))
+    }
+}
+
+impl Iterator for BjorklundDistances {
+    type Item = usize;
+    fn next(&mut self) -> Option<Self::Item> {
+        next_onset_distance(self.ix, &self.pattern).map(|dist| {
+            self.ix += 1;
+            dist
+        })
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.len();
+        (len, Some(len))
     }
 }
 
@@ -30,6 +60,33 @@ impl ExactSizeIterator for Bjorklund {
     fn len(&self) -> usize {
         self.remaining
     }
+}
+
+impl ExactSizeIterator for BjorklundDistances {
+    fn len(&self) -> usize {
+        if next_onset_distance(self.ix, &self.pattern).is_some() {
+            self.pattern.len() - self.ix
+        } else {
+            0
+        }
+    }
+}
+
+/// Returns the cyclic distance until the next `true` onset, where the distance
+/// is inclusive of the current event.
+fn next_onset_distance(mut ix: usize, pattern: &[bool]) -> Option<usize> {
+    if ix >= pattern.len() {
+        return None;
+    }
+    let mut dist = 1;
+    while dist <= pattern.len() {
+        ix = (ix + 1) % pattern.len();
+        if pattern[ix] {
+            return Some(dist);
+        }
+        dist += 1;
+    }
+    None
 }
 
 /// When len(xs) > len(ys), we split xs at position len(ys),
@@ -72,6 +129,23 @@ pub fn bjorklund(k: usize, remaining @ n: usize) -> Bjorklund {
     // Concatenate (flatten) all sublists in the resulting xs ++ ys
     let iter = xs.into_iter().chain(ys).flatten();
     Bjorklund { iter, remaining }
+}
+
+/// Given a bjorklund pattern, produces an iterator yielding the duration
+/// until the next onset, inclusive of the current event.
+pub fn distances(pattern: Vec<bool>) -> BjorklundDistances {
+    BjorklundDistances { ix: 0, pattern }
+}
+
+/// Offset the given bjorklund pattern.
+pub fn offset<I>(pattern: I, off: usize) -> impl Iterator<Item = bool>
+where
+    I: IntoIterator<Item = bool>,
+    I::IntoIter: Clone + ExactSizeIterator,
+{
+    let iter = pattern.into_iter();
+    let len = iter.len();
+    iter.cycle().skip(off).take(len)
 }
 
 #[cfg(test)]
